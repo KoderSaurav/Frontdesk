@@ -6,9 +6,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 async function runMigration() {
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error('[Error] DATABASE_URL environment variable is missing.');
+    console.error('[Error] POSTGRES_URL or DATABASE_URL environment variable is missing.');
     process.exit(1);
   }
 

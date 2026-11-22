@@ -24,7 +24,11 @@ export const inMemoryStore = {
 };
 
 export async function initDatabase(): Promise<{ isPostgres: boolean }> {
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString =
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_PRISMA_URL;
 
   if (connectionString) {
     try {
@@ -37,6 +41,10 @@ export async function initDatabase(): Promise<{ isPostgres: boolean }> {
       const res = await pool.query('SELECT NOW()');
       isPostgresConnected = true;
       console.log(`[Database] Connected to PostgreSQL instance (${res.rows[0].now})`);
+
+      // Automatically initialize schema and seed if running on new Vercel Postgres instance
+      await ensurePostgresSchema(pool);
+
       return { isPostgres: true };
     } catch (err: any) {
       console.warn(`[Database] PostgreSQL connection failed (${err.message}). Using local in-memory store.`);
@@ -44,11 +52,125 @@ export async function initDatabase(): Promise<{ isPostgres: boolean }> {
       pool = null;
     }
   } else {
-    console.log('[Database] DATABASE_URL not set. Initialized in-memory data store.');
+    console.log('[Database] No PostgreSQL connection string found. Initialized in-memory data store.');
   }
 
   seedInMemoryStore();
   return { isPostgres: false };
+}
+
+async function ensurePostgresSchema(pgPool: Pool) {
+  try {
+    const checkTable = await pgPool.query(
+      "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users')"
+    );
+    const tableExists = checkTable.rows[0]?.exists;
+    if (!tableExists) {
+      console.log('[Database] Initializing PostgreSQL schema on Vercel Postgres...');
+      await pgPool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            email VARCHAR(150) UNIQUE NOT NULL,
+            password_hash VARCHAR(255),
+            role VARCHAR(20) NOT NULL CHECK (role IN ('AGENT', 'CUSTOMER', 'ADMIN')),
+            title VARCHAR(100),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS holidays (
+            id SERIAL PRIMARY KEY,
+            date DATE UNIQUE NOT NULL,
+            name VARCHAR(100) NOT NULL,
+            description TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS tickets (
+            id SERIAL PRIMARY KEY,
+            ticket_number VARCHAR(20) UNIQUE NOT NULL,
+            customer_id INTEGER REFERENCES users(id),
+            customer_name VARCHAR(100) NOT NULL,
+            customer_email VARCHAR(150) NOT NULL,
+            subject VARCHAR(255) NOT NULL,
+            description TEXT NOT NULL,
+            priority VARCHAR(20) NOT NULL CHECK (priority IN ('URGENT', 'MEDIUM', 'LOW')),
+            status VARCHAR(30) NOT NULL CHECK (status IN ('OPEN', 'IN_PROGRESS', 'WAITING_FOR_CUSTOMER', 'RESOLVED', 'CLOSED')),
+            assigned_to INTEGER REFERENCES users(id),
+            response_deadline TIMESTAMP WITH TIME ZONE NOT NULL,
+            resolution_deadline TIMESTAMP WITH TIME ZONE NOT NULL,
+            first_response_at TIMESTAMP WITH TIME ZONE,
+            resolved_at TIMESTAMP WITH TIME ZONE,
+            closed_at TIMESTAMP WITH TIME ZONE,
+            sla_paused_at TIMESTAMP WITH TIME ZONE,
+            total_paused_working_minutes INTEGER DEFAULT 0,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS messages (
+            id SERIAL PRIMARY KEY,
+            ticket_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE,
+            sender_id INTEGER REFERENCES users(id),
+            sender_name VARCHAR(100) NOT NULL,
+            sender_role VARCHAR(20) NOT NULL CHECK (sender_role IN ('AGENT', 'CUSTOMER', 'SYSTEM')),
+            is_internal BOOLEAN DEFAULT FALSE,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id SERIAL PRIMARY KEY,
+            ticket_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE,
+            actor_id INTEGER REFERENCES users(id),
+            actor_name VARCHAR(100) NOT NULL,
+            actor_role VARCHAR(20) NOT NULL,
+            action_type VARCHAR(50) NOT NULL,
+            details JSONB,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
+        CREATE INDEX IF NOT EXISTS idx_tickets_assigned ON tickets(assigned_to);
+        CREATE INDEX IF NOT EXISTS idx_tickets_customer ON tickets(customer_email);
+        CREATE INDEX IF NOT EXISTS idx_messages_ticket ON messages(ticket_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_ticket ON audit_logs(ticket_id);
+      `);
+
+      const defaultHash =
+        'frontdesk2026salt:4e65a2dba3b44ce4241d941da4abef66f6d727043509f0261a8ed9d0c55bf3e4fb46eaa9ebbdb776509406abca3604ba63df4b8ef92495b0c537f385a0809b76';
+
+      await pgPool.query(`
+        INSERT INTO users (id, name, email, password_hash, role, title) VALUES
+        (1, 'Meera', 'meera@arvo.com', '${defaultHash}', 'AGENT', 'Support Lead'),
+        (2, 'Rahul', 'rahul@arvo.com', '${defaultHash}', 'AGENT', 'Support Agent'),
+        (3, 'Sneha', 'sneha@arvo.com', '${defaultHash}', 'AGENT', 'Support Agent'),
+        (4, 'Arjun', 'arjun@arvo.com', '${defaultHash}', 'AGENT', 'Support Agent'),
+        (5, 'Priya', 'priya@arvo.com', '${defaultHash}', 'AGENT', 'Support Agent'),
+        (6, 'Anjali', 'anjali@arvo.com', '${defaultHash}', 'AGENT', 'Support Agent'),
+        (7, 'Kiran', 'kiran@arvo.com', '${defaultHash}', 'AGENT', 'Support Agent'),
+        (8, 'Neha', 'neha@arvo.com', '${defaultHash}', 'AGENT', 'Support Agent'),
+        (9, 'Vikram', 'vikram@arvo.com', '${defaultHash}', 'AGENT', 'Support Agent'),
+        (101, 'Alex Rivera', 'alex@techcorp.io', '${defaultHash}', 'CUSTOMER', 'CTO at TechCorp'),
+        (102, 'Sara Chen', 'sara@cloudflow.com', '${defaultHash}', 'CUSTOMER', 'Ops Lead at CloudFlow'),
+        (103, 'David Kim', 'david@finpay.net', '${defaultHash}', 'CUSTOMER', 'DevOps Manager at FinPay')
+        ON CONFLICT (email) DO NOTHING;
+
+        SELECT setval('users_id_seq', 200, false);
+
+        INSERT INTO holidays (date, name, description) VALUES
+        ('2026-01-26', 'Republic Day', 'National holiday'),
+        ('2026-03-25', 'Holi', 'Festival of colors'),
+        ('2026-08-15', 'Independence Day', 'National holiday'),
+        ('2026-10-02', 'Gandhi Jayanti', 'National holiday'),
+        ('2026-11-08', 'Diwali', 'Festival of lights'),
+        ('2026-12-25', 'Christmas', 'Christmas holiday')
+        ON CONFLICT (date) DO NOTHING;
+      `);
+      console.log('[Database] PostgreSQL auto-schema and initial seed completed.');
+    }
+  } catch (err: any) {
+    console.warn('[Database] Auto-migration check warning:', err.message);
+  }
 }
 
 export function getPool(): Pool | null {

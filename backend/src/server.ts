@@ -65,16 +65,18 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 
 // Periodic Worker: Evaluates tickets waiting on customer > 1 working week
 const AUTO_CLOSE_INTERVAL_MS = 15 * 60 * 1000; // Every 15 minutes
-setInterval(async () => {
-  try {
-    const closed = await checkAndAutoCloseInactiveTickets();
-    if (closed > 0) {
-      console.log(`[AutoClose Worker] Automatically closed ${closed} inactive customer tickets.`);
+if (!process.env.VERCEL) {
+  setInterval(async () => {
+    try {
+      const closed = await checkAndAutoCloseInactiveTickets();
+      if (closed > 0) {
+        console.log(`[AutoClose Worker] Automatically closed ${closed} inactive customer tickets.`);
+      }
+    } catch (err: any) {
+      console.error('[AutoClose Worker] Error running auto-close check:', err.message);
     }
-  } catch (err: any) {
-    console.error('[AutoClose Worker] Error running auto-close check:', err.message);
-  }
-}, AUTO_CLOSE_INTERVAL_MS);
+  }, AUTO_CLOSE_INTERVAL_MS);
+}
 
 async function startServer() {
   const { isPostgres } = await initDatabase();
@@ -85,7 +87,7 @@ async function startServer() {
   });
 }
 
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   startServer().catch((err) => {
     console.error('Fatal server startup error:', err);
   });

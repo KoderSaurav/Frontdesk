@@ -5,8 +5,12 @@ let initialized = false;
 
 export default async function handler(req: any, res: any) {
   if (!initialized) {
-    await initDatabase();
-    initialized = true;
+    try {
+      await initDatabase();
+      initialized = true;
+    } catch (err: any) {
+      console.error('[Vercel Serverless] Database init warning:', err);
+    }
   }
   return app(req, res);
 }
