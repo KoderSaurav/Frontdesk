@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { api } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { api, getStoredCustomerUser } from '../services/api';
 import { TicketPriority } from '../types';
-import { X, PlusCircle, AlertCircle } from 'lucide-react';
+import { X, PlusCircle, AlertCircle, Lock } from 'lucide-react';
 
 interface NewTicketModalProps {
   onClose: () => void;
@@ -12,13 +12,22 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
   onClose,
   onTicketCreated,
 }) => {
-  const [customerName, setCustomerName] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
+  const loggedInCustomer = getStoredCustomerUser();
+
+  const [customerName, setCustomerName] = useState(loggedInCustomer?.name || '');
+  const [customerEmail, setCustomerEmail] = useState(loggedInCustomer?.email || '');
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TicketPriority>('MEDIUM');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (loggedInCustomer) {
+      setCustomerName(loggedInCustomer.name || '');
+      setCustomerEmail(loggedInCustomer.email || '');
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +90,7 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="e.g. John Doe"
-                className="w-full bg-slate-800 text-xs text-white rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-slate-900 text-xs text-slate-100 placeholder-slate-400 rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-slate-900"
               />
             </div>
             <div>
@@ -94,7 +103,7 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
                 placeholder="john@company.com"
-                className="w-full bg-slate-800 text-xs text-white rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-slate-900 text-xs text-slate-100 placeholder-slate-400 rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-slate-900"
               />
             </div>
           </div>
@@ -106,7 +115,7 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value as TicketPriority)}
-              className="w-full bg-slate-800 text-xs text-white rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full bg-slate-900 text-xs text-slate-100 rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-slate-900"
             >
               <option value="URGENT">Urgent (Customer cannot work — 2h Response SLA, Same Day Resolution)</option>
               <option value="MEDIUM">Medium (Normal business impact — 4.5h Response SLA, 3 Days Resolution)</option>
@@ -124,7 +133,7 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="e.g. API Gateway returning 504 on payments"
-              className="w-full bg-slate-800 text-xs text-white rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full bg-slate-900 text-xs text-slate-100 placeholder-slate-400 rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-slate-900"
             />
           </div>
 
@@ -138,7 +147,7 @@ export const NewTicketModal: React.FC<NewTicketModalProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Provide full details of what went wrong..."
-              className="w-full bg-slate-800 text-xs text-white rounded-xl p-3 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className="w-full bg-slate-900 text-xs text-slate-100 placeholder-slate-400 rounded-xl p-3 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-slate-900 resize-none shadow-inner"
             />
           </div>
 

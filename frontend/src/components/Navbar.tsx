@@ -1,15 +1,14 @@
 import React from 'react';
 import { User } from '../types';
-import { ShieldCheck, UserCheck, Clock, Users, ExternalLink, PlusCircle, RefreshCw } from 'lucide-react';
+import { ShieldCheck, UserCheck, Clock, PlusCircle, RefreshCw, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   agents: User[];
   currentAgent: User | null;
   onSelectAgent: (agent: User) => void;
-  activeView: 'agent' | 'customer';
-  onChangeView: (view: 'agent' | 'customer') => void;
   onOpenNewTicket: () => void;
   onRefresh: () => void;
+  onLogout: () => void;
   isLoading: boolean;
 }
 
@@ -17,10 +16,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   agents,
   currentAgent,
   onSelectAgent,
-  activeView,
-  onChangeView,
   onOpenNewTicket,
   onRefresh,
+  onLogout,
   isLoading,
 }) => {
   return (
@@ -37,10 +35,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-xl font-bold tracking-tight text-white">Frontdesk</span>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium">
-                    Arvo Systems
+                    Staff Workspace
                   </span>
                 </div>
-                <p className="text-xs text-slate-400">Customer Support Management</p>
+                <p className="text-xs text-slate-400">Arvo Systems Engineering Support</p>
               </div>
             </div>
 
@@ -53,63 +51,35 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Navigation & Controls */}
           <div className="flex items-center gap-3">
-            {/* View Switcher: Agent Dashboard vs Customer Sandbox */}
-            <div className="flex p-1 bg-slate-800/90 rounded-lg border border-slate-700">
-              <button
-                onClick={() => onChangeView('agent')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  activeView === 'agent'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Agent Workspace</span>
-              </button>
-              <button
-                onClick={() => onChangeView('customer')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  activeView === 'customer'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Customer Portal</span>
-              </button>
+            {/* 1-Click Agent Switcher (Preserved across all 9 agents as it was) */}
+            <div className="flex items-center gap-2 pl-2 bg-slate-850/80 border border-slate-700/80 px-2.5 py-1 rounded-xl">
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 hidden md:flex">
+                <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Agent:</span>
+              </div>
+              <div className="relative">
+                <select
+                  value={currentAgent?.id || 1}
+                  onChange={(e) => {
+                    const selected = agents.find((a) => a.id === Number(e.target.value));
+                    if (selected) onSelectAgent(selected);
+                  }}
+                  className="bg-slate-800 hover:bg-slate-750 text-white text-xs font-semibold py-1.5 pl-2.5 pr-8 rounded-lg border border-slate-650 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition-colors"
+                >
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name} ({agent.title || 'Support Agent'})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {/* Active Agent Switcher */}
-            {activeView === 'agent' && (
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-                <div className="flex items-center gap-1.5 text-xs text-slate-400 hidden md:flex">
-                  <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Agent:</span>
-                </div>
-                <div className="relative">
-                  <select
-                    value={currentAgent?.id || 1}
-                    onChange={(e) => {
-                      const selected = agents.find((a) => a.id === Number(e.target.value));
-                      if (selected) onSelectAgent(selected);
-                    }}
-                    className="bg-slate-800 hover:bg-slate-750 text-white text-xs font-medium py-1.5 pl-3 pr-8 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer transition-colors"
-                  >
-                    {agents.map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name} ({agent.title || 'Agent'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {/* Refresh Button */}
+            {/* Refresh Queue Button */}
             <button
               onClick={onRefresh}
               disabled={isLoading}
-              title="Refresh Queue"
+              title="Refresh Ticket Queue"
               className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-indigo-400' : ''}`} />
@@ -121,7 +91,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white text-xs font-semibold rounded-lg shadow-md shadow-indigo-500/20 transition-all transform active:scale-95"
             >
               <PlusCircle className="w-4 h-4" />
-              <span>New Ticket</span>
+              <span className="hidden sm:inline">New Ticket</span>
+            </button>
+
+            {/* Sign Out / Exit Workspace Button */}
+            <button
+              onClick={onLogout}
+              title="Sign out of Agent Workspace"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-800/60 rounded-lg text-xs font-medium transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Exit</span>
             </button>
           </div>
         </div>

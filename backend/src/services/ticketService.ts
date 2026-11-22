@@ -32,11 +32,13 @@ export async function listTickets({
   status,
   priority,
   assignedTo,
+  customerEmail,
   search,
 }: {
   status?: string;
   priority?: string;
   assignedTo?: number;
+  customerEmail?: string;
   search?: string;
 } = {}): Promise<Ticket[]> {
   const holidays = await getHolidays();
@@ -64,6 +66,10 @@ export async function listTickets({
       params.push(assignedTo);
       query += ` AND t.assigned_to = $${params.length}`;
     }
+    if (customerEmail) {
+      params.push(customerEmail.trim().toLowerCase());
+      query += ` AND LOWER(t.customer_email) = $${params.length}`;
+    }
     if (search) {
       params.push(`%${search}%`);
       query += ` AND (t.ticket_number ILIKE $${params.length} OR t.subject ILIKE $${params.length} OR t.customer_name ILIKE $${params.length})`;
@@ -89,6 +95,10 @@ export async function listTickets({
     }
     if (assignedTo) {
       tickets = tickets.filter((t) => t.assigned_to === assignedTo);
+    }
+    if (customerEmail) {
+      const emailLower = customerEmail.trim().toLowerCase();
+      tickets = tickets.filter((t) => t.customer_email.toLowerCase() === emailLower);
     }
     if (search) {
       const q = search.toLowerCase();
@@ -905,6 +915,7 @@ export async function checkAndAutoCloseInactiveTickets(): Promise<number> {
  * Create a new support ticket with input validation and duplicate prevention.
  */
 export async function createTicket({
+  customerId = null,
   customerName,
   customerEmail,
   subject,
@@ -912,6 +923,7 @@ export async function createTicket({
   priority = 'MEDIUM',
   status,
 }: {
+  customerId?: number | null;
   customerName: string;
   customerEmail: string;
   subject: string;
@@ -1006,16 +1018,17 @@ export async function createTicket({
 
   if (pool) {
     const res = await pool.query(
-      `INSERT INTO tickets (ticket_number, customer_name, customer_email, subject, description, priority, status, response_deadline, resolution_deadline, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'OPEN', $7, $8, $9, $9)
+      `INSERT INTO tickets (ticket_number, customer_id, customer_name, customer_email, subject, description, priority, status, response_deadline, resolution_deadline, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'OPEN', $8, $9, $10, $10)
        RETURNING *`,
-      [ticketNumber, customerName.trim(), customerEmail.trim(), subject.trim(), description.trim(), effectivePriority, responseDeadline.toISOString(), resolutionDeadline.toISOString(), nowIso]
+      [ticketNumber, customerId, customerName.trim(), customerEmail.trim(), subject.trim(), description.trim(), effectivePriority, responseDeadline.toISOString(), resolutionDeadline.toISOString(), nowIso]
     );
     createdTicket = res.rows[0];
   } else {
     createdTicket = {
       id: inMemoryStore.nextId.tickets++,
       ticket_number: ticketNumber,
+      customer_id: customerId || undefined,
       customer_name: customerName.trim(),
       customer_email: customerEmail.trim(),
       subject: subject.trim(),

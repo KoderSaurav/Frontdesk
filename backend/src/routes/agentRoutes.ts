@@ -15,13 +15,22 @@ import {
   exportTicket,
 } from '../services/ticketService';
 import { getAuditLogsForTicket } from '../services/auditService';
+import { requireAgent } from '../middleware/auth';
 
 const router = Router();
 
+// Apply RBAC: Support Agent access only (blocks customers with 403)
+router.use(requireAgent);
+
 function getAgentContext(req: Request) {
   const agentIdHeader = req.headers['x-agent-id'];
-  const agentId = agentIdHeader ? Number(agentIdHeader) : 1;
-  return { agentId };
+  if (agentIdHeader) {
+    return { agentId: Number(agentIdHeader) };
+  }
+  if (req.user && (req.user.role === 'AGENT' || req.user.role === 'ADMIN')) {
+    return { agentId: req.user.userId };
+  }
+  return { agentId: 1 };
 }
 
 // Get support agent team members

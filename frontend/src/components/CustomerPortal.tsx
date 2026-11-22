@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import {
   ShieldCheck,
-  Search,
   MessageSquare,
   Send,
   RotateCcw,
@@ -10,24 +9,38 @@ import {
   Clock,
   AlertCircle,
   CheckCircle,
-  Lock,
+  Ticket as TicketIcon,
+  ChevronRight,
+  ArrowLeft,
+  LifeBuoy,
 } from 'lucide-react';
+import { Ticket } from '../types';
 
 interface CustomerPortalProps {
-  onBackToAgent: () => void;
+  currentUser: {
+    id?: number;
+    name: string;
+    email: string;
+    role?: string;
+  };
   onOpenNewTicket: () => void;
 }
 
 export const CustomerPortal: React.FC<CustomerPortalProps> = ({
-  onBackToAgent,
+  currentUser,
   onOpenNewTicket,
 }) => {
-  const [ticketNumber, setTicketNumber] = useState('INC-0304');
-  const [ticketData, setTicketData] = useState<any | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Tickets & Loading State
+  const [myTickets, setMyTickets] = useState<Ticket[]>([]);
+  const [isFetchingTickets, setIsFetchingTickets] = useState(false);
+  const [selectedTicketNumber, setSelectedTicketNumber] = useState<string | null>(null);
 
-  // Actions
+  // Ticket Detail & Conversation View State
+  const [ticketData, setTicketData] = useState<any | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  // Reply & Reopen State
   const [replyContent, setReplyContent] = useState('');
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
@@ -35,29 +48,38 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const [reopenError, setReopenError] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
-  const fetchCustomerTicket = async (numToFetch: string) => {
-    setIsLoading(true);
-    setError(null);
-    setSuccessBanner(null);
+  // Load only tickets submitted by this customer
+  const loadMyTickets = async () => {
+    setIsFetchingTickets(true);
     try {
-      const data = await api.customerGetTicket(numToFetch.trim());
-      setTicketData(data);
+      const tickets = await api.getMyTickets();
+      setMyTickets(tickets);
     } catch (err: any) {
-      setError(err.message || 'Ticket not found.');
-      setTicketData(null);
+      console.error('Failed to load customer tickets:', err);
     } finally {
-      setIsLoading(false);
+      setIsFetchingTickets(false);
     }
   };
 
   useEffect(() => {
-    fetchCustomerTicket(ticketNumber);
-  }, []);
+    loadMyTickets();
+  }, [currentUser.email]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (ticketNumber.trim()) {
-      fetchCustomerTicket(ticketNumber);
+  // Load single ticket details for conversation thread
+  const openTicketDetail = async (num: string) => {
+    setSelectedTicketNumber(num);
+    setIsLoadingDetail(true);
+    setDetailError(null);
+    setSuccessBanner(null);
+    setShowReopenBox(false);
+    try {
+      const data = await api.customerGetTicket(num);
+      setTicketData(data);
+    } catch (err: any) {
+      setDetailError(err.message || 'Unable to load ticket details.');
+      setTicketData(null);
+    } finally {
+      setIsLoadingDetail(false);
     }
   };
 
@@ -70,11 +92,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       await api.customerReply(
         ticketData.ticket.ticketNumber,
         replyContent.trim(),
-        ticketData.ticket.customerName
+        currentUser.name
       );
-      setSuccessBanner('Reply submitted. SLA timer has resumed on the support queue.');
+      setSuccessBanner('Reply submitted successfully. Support team has been notified.');
       setReplyContent('');
-      await fetchCustomerTicket(ticketData.ticket.ticketNumber);
+      // Reload ticket detail and refresh queue
+      await openTicketDetail(ticketData.ticket.ticketNumber);
+      loadMyTickets();
     } catch (err: any) {
       alert(`Error sending reply: ${err.message}`);
     } finally {
@@ -92,240 +116,349 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       setSuccessBanner('Ticket successfully reopened!');
       setShowReopenBox(false);
       setReopenReason('');
-      await fetchCustomerTicket(ticketData.ticket.ticketNumber);
+      await openTicketDetail(ticketData.ticket.ticketNumber);
+      loadMyTickets();
     } catch (err: any) {
       setReopenError(err.message || 'Failed to reopen ticket.');
     }
   };
 
+  // Metrics calculations for the logged-in user
+  const totalCount = myTickets.length;
+  const activeCount = myTickets.filter(
+    (t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS'
+  ).length;
+  const waitingOnCustomerCount = myTickets.filter(
+    (t) => t.status === 'WAITING_FOR_CUSTOMER'
+  ).length;
+  const resolvedCount = myTickets.filter(
+    (t) => t.status === 'RESOLVED' || t.status === 'CLOSED'
+  ).length;
+
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      {/* Banner Explaining Customer Perspective & Privacy Verification */}
-      <div className="bg-gradient-to-r from-emerald-950/40 to-slate-900 border border-emerald-500/40 rounded-2xl p-5 shadow-xl">
-        <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5 border border-emerald-500/30">
-            <ShieldCheck className="w-6 h-6" />
+    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in pb-12">
+      {/* Top Banner */}
+      <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border border-emerald-500/30 rounded-2xl p-6 shadow-xl flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center flex-shrink-0 border border-emerald-500/30">
+            <LifeBuoy className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>Customer Support Portal</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
-                Self-Service
+            <h2 className="text-xl font-bold text-white flex items-center gap-2.5">
+              <span>Customer Helpdesk</span>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                Verified Account
               </span>
-            </h3>
-            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-              Track the status of your reported issues, communicate directly with the support team, or submit follow-up details.
+            </h2>
+            <p className="text-xs text-slate-300 mt-1">
+              Showing tickets reported by <strong className="text-emerald-300">{currentUser.email}</strong>. Private internal staff notes are hidden.
             </p>
-
-            {/* Quick Ticket Selector Links */}
-            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-emerald-500/20 text-xs">
-              <span className="text-slate-400">Quick view:</span>
-              <button
-                onClick={() => {
-                  setTicketNumber('INC-0304');
-                  fetchCustomerTicket('INC-0304');
-                }}
-                className="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 hover:bg-slate-700 font-mono font-semibold"
-              >
-                INC-0304
-              </button>
-              <button
-                onClick={() => {
-                  setTicketNumber('INC-0318');
-                  fetchCustomerTicket('INC-0318');
-                }}
-                className="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 hover:bg-slate-700 font-mono font-semibold"
-              >
-                INC-0318
-              </button>
-              <button
-                onClick={() => {
-                  setTicketNumber('INC-0291');
-                  fetchCustomerTicket('INC-0291');
-                }}
-                className="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 hover:bg-slate-700 font-mono font-semibold"
-              >
-                INC-0291
-              </button>
-            </div>
           </div>
+        </div>
+
+        <button
+          onClick={onOpenNewTicket}
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all transform active:scale-95"
+        >
+          <PlusCircle className="w-4 h-4" />
+          <span>Report New Problem</span>
+        </button>
+      </div>
+
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-slate-850 p-4 rounded-xl border border-slate-700/80 shadow-md">
+          <p className="text-xs text-slate-400 font-medium">My Total Tickets</p>
+          <p className="text-2xl font-extrabold text-white mt-1">{totalCount}</p>
+        </div>
+        <div className="bg-slate-850 p-4 rounded-xl border border-slate-700/80 shadow-md">
+          <p className="text-xs text-indigo-400 font-medium">In Progress</p>
+          <p className="text-2xl font-extrabold text-indigo-200 mt-1">{activeCount}</p>
+        </div>
+        <div className="bg-slate-850 p-4 rounded-xl border border-slate-700/80 shadow-md">
+          <p className="text-xs text-amber-400 font-medium">Action Required (You)</p>
+          <p className="text-2xl font-extrabold text-amber-200 mt-1">{waitingOnCustomerCount}</p>
+        </div>
+        <div className="bg-slate-850 p-4 rounded-xl border border-slate-700/80 shadow-md">
+          <p className="text-xs text-emerald-400 font-medium">Resolved / Closed</p>
+          <p className="text-2xl font-extrabold text-emerald-200 mt-1">{resolvedCount}</p>
         </div>
       </div>
 
-      {/* Ticket Lookup Bar */}
-      <div className="bg-slate-850 p-4 rounded-2xl border border-slate-700/80 shadow-md">
-        <form onSubmit={handleSearch} className="flex gap-3">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Enter your ticket number (e.g., INC-0304)..."
-              value={ticketNumber}
-              onChange={(e) => setTicketNumber(e.target.value)}
-              className="w-full bg-slate-900 text-sm text-white placeholder-slate-400 rounded-xl pl-10 pr-4 py-2.5 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
-            />
-          </div>
-          <button
-            type="submit"
-            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95"
-          >
-            Find Ticket
-          </button>
-          <button
-            type="button"
-            onClick={onOpenNewTicket}
-            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5"
-          >
-            <PlusCircle className="w-4 h-4 text-emerald-400" />
-            <span>Create New Ticket</span>
-          </button>
-        </form>
-      </div>
-
-      {/* Feedback Messages */}
+      {/* Notification Banner */}
       {successBanner && (
-        <div className="bg-emerald-500/20 border border-emerald-500/40 p-3 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
+        <div className="bg-emerald-500/20 border border-emerald-500/40 p-3.5 rounded-xl text-xs text-emerald-300 flex items-center gap-2 animate-fade-in">
           <CheckCircle className="w-4 h-4 flex-shrink-0" />
           <span>{successBanner}</span>
         </div>
       )}
-      {error && (
-        <div className="bg-rose-500/20 border border-rose-500/40 p-4 rounded-xl text-xs text-rose-300 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
 
-      {/* Ticket Details Display */}
-      {ticketData && (
+      {/* VIEW 1: MY TICKETS LIST */}
+      {!selectedTicketNumber ? (
         <div className="bg-slate-850 rounded-2xl border border-slate-700/80 shadow-xl overflow-hidden">
-          {/* Card Header */}
-          <div className="p-5 border-b border-slate-700 flex flex-wrap items-center justify-between gap-3 bg-slate-800/40">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="font-mono text-sm font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+          <div className="p-4 sm:p-5 border-b border-slate-700/80 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TicketIcon className="w-4 h-4 text-emerald-400" />
+              <h3 className="font-bold text-white text-sm sm:text-base">
+                Reported Problems ({myTickets.length})
+              </h3>
+            </div>
+            <span className="text-xs text-slate-400">Strictly isolated to your account</span>
+          </div>
+
+          {isFetchingTickets ? (
+            <div className="p-12 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+              <div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+              <span>Loading your reported problems...</span>
+            </div>
+          ) : myTickets.length === 0 ? (
+            <div className="p-12 text-center text-slate-400 space-y-3">
+              <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-slate-500">
+                <TicketIcon className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-semibold text-slate-300">No reported problems yet</h4>
+              <p className="text-xs max-w-sm mx-auto">
+                You have not submitted any technical support tickets. Whenever you report an issue, it will appear here.
+              </p>
+              <button
+                onClick={onOpenNewTicket}
+                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl shadow-md transition-all"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Submit Your First Ticket</span>
+              </button>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-800">
+              {myTickets.map((t) => (
+                <div
+                  key={t.id}
+                  onClick={() => openTicketDetail(t.ticket_number)}
+                  className="p-4 sm:p-5 hover:bg-slate-800/60 cursor-pointer transition-all flex items-center justify-between gap-4 group"
+                >
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                        {t.ticket_number}
+                      </span>
+                      <span
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
+                          t.status === 'RESOLVED' || t.status === 'CLOSED'
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : t.status === 'WAITING_FOR_CUSTOMER'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : 'bg-indigo-500/15 text-indigo-300'
+                        }`}
+                      >
+                        {t.status.replace(/_/g, ' ')}
+                      </span>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                          t.priority === 'URGENT'
+                            ? 'bg-rose-500/20 text-rose-300'
+                            : t.priority === 'MEDIUM'
+                            ? 'bg-amber-500/20 text-amber-300'
+                            : 'bg-blue-500/20 text-blue-300'
+                        }`}
+                      >
+                        {t.priority}
+                      </span>
+                    </div>
+
+                    <h4 className="text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors truncate">
+                      {t.subject}
+                    </h4>
+                    <p className="text-xs text-slate-400 line-clamp-1">{t.description}</p>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="text-right hidden sm:block">
+                      <p className="text-[11px] text-slate-400">Created</p>
+                      <p className="text-xs text-slate-300 font-mono">
+                        {new Date(t.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* VIEW 2: TICKET DETAIL & CONVERSATION THREAD */
+        <div className="bg-slate-850 rounded-2xl border border-slate-700/80 shadow-xl overflow-hidden animate-fade-in">
+          {/* Header Bar */}
+          <div className="p-4 sm:p-5 border-b border-slate-700/80 bg-slate-800/50 flex flex-wrap items-center justify-between gap-3">
+            <button
+              onClick={() => {
+                setSelectedTicketNumber(null);
+                setTicketData(null);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to My Tickets</span>
+            </button>
+
+            {ticketData && (
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
                   {ticketData.ticket.ticketNumber}
                 </span>
                 <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-slate-700 text-slate-200">
                   {ticketData.ticket.status}
                 </span>
+                <span className="text-xs px-2 py-0.5 rounded font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
+                  {ticketData.ticket.priority}
+                </span>
               </div>
-              <h2 className="text-lg font-bold text-white">{ticketData.ticket.subject}</h2>
-            </div>
-
-            {/* Reopen Button if Ticket is Resolved */}
-            {ticketData.ticket.status === 'RESOLVED' && (
-              <button
-                onClick={() => setShowReopenBox(!showReopenBox)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg shadow-md transition-all"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reopen this Ticket</span>
-              </button>
             )}
           </div>
 
-          {/* Reopen Explanation Box */}
-          {showReopenBox && (
-            <div className="p-4 bg-amber-950/20 border-b border-amber-500/30">
-              <h4 className="text-xs font-bold text-amber-300 mb-1">Reopen Window (7 Calendar Days):</h4>
-              <p className="text-xs text-slate-300 mb-3">
-                If your issue was not properly solved, you can reopen it within 1 week of resolution.
-              </p>
-              {reopenError && (
-                <div className="p-2 mb-3 bg-rose-500/20 border border-rose-500/40 rounded text-xs text-rose-300">
-                  {reopenError}
+          {isLoadingDetail ? (
+            <div className="p-12 text-center text-xs text-slate-400">Loading conversation...</div>
+          ) : detailError ? (
+            <div className="p-6 text-rose-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              <span>{detailError}</span>
+            </div>
+          ) : ticketData ? (
+            <div>
+              {/* Ticket Subject & Reopen Action */}
+              <div className="p-5 border-b border-slate-700/60 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-white">{ticketData.ticket.subject}</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Reported on {new Date(ticketData.ticket.createdAt).toLocaleString()}
+                  </p>
+                </div>
+
+                {ticketData.ticket.status === 'RESOLVED' && (
+                  <button
+                    onClick={() => setShowReopenBox(!showReopenBox)}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl shadow-md transition-all"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reopen this Ticket</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Reopen Box */}
+              {showReopenBox && (
+                <div className="p-4 bg-amber-950/20 border-b border-amber-500/30 animate-fade-in">
+                  <h4 className="text-xs font-bold text-amber-300 mb-1">Reopen Policy (7 Days):</h4>
+                  <p className="text-xs text-slate-300 mb-3">
+                    If this problem is not fully solved, enter a brief reason below to reopen the ticket and notify our engineers.
+                  </p>
+                  {reopenError && (
+                    <div className="p-2 mb-3 bg-rose-500/20 border border-rose-500/40 rounded text-xs text-rose-300">
+                      {reopenError}
+                    </div>
+                  )}
+                  <form onSubmit={handleReopen} className="flex gap-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="State why this issue persists..."
+                      value={reopenReason}
+                      onChange={(e) => setReopenReason(e.target.value)}
+                      className="flex-1 bg-slate-900 text-xs text-slate-100 placeholder-slate-400 rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:bg-slate-900"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg shadow-sm"
+                    >
+                      Confirm Reopen
+                    </button>
+                  </form>
                 </div>
               )}
-              <form onSubmit={handleReopen} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Explain what is still not resolved..."
-                  value={reopenReason}
-                  onChange={(e) => setReopenReason(e.target.value)}
-                  className="flex-1 bg-slate-900 text-xs text-white rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg"
-                >
-                  Confirm Reopen
-                </button>
-              </form>
-            </div>
-          )}
 
-          {/* Ticket Description */}
-          <div className="p-5 border-b border-slate-700/60 bg-slate-800/20">
-            <h4 className="text-xs font-semibold text-slate-400 mb-1">Your Problem Description:</h4>
-            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">
-              {ticketData.ticket.description}
-            </p>
-          </div>
-
-          {/* Conversation Feed (Public Messages Only) */}
-          <div className="p-5 space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-              <span>Public Conversation Thread</span>
-              <span className="text-[11px] text-emerald-400 font-normal">
-                {ticketData.conversation.length} public {ticketData.conversation.length === 1 ? 'message' : 'messages'}
-              </span>
-            </h4>
-
-            {ticketData.conversation.length === 0 ? (
-              <p className="text-xs text-slate-400 italic">No responses yet. An agent is reviewing your request.</p>
-            ) : (
-              ticketData.conversation.map((msg: any) => {
-                const isCustomer = msg.senderRole === 'CUSTOMER';
-                return (
-                  <div
-                    key={msg.id}
-                    className={`rounded-xl p-4 border text-sm leading-relaxed ${
-                      isCustomer
-                        ? 'bg-slate-800/90 border-slate-700/80 mr-8'
-                        : 'bg-emerald-950/20 border-emerald-500/30 ml-8'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5 text-xs">
-                      <span className={`font-semibold ${isCustomer ? 'text-slate-200' : 'text-emerald-300'}`}>
-                        {msg.senderName} {isCustomer ? '(You)' : '(Support Agent)'}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {new Date(msg.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-slate-200 whitespace-pre-wrap">{msg.content}</p>
+              {/* Conversation Timeline */}
+              <div className="p-6 space-y-4 max-h-[480px] overflow-y-auto">
+                {/* Initial Problem Report */}
+                <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-4 mr-6 sm:mr-12">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-emerald-400">
+                      {currentUser.name} (Original Report)
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {new Date(ticketData.ticket.createdAt).toLocaleString()}
+                    </span>
                   </div>
-                );
-              })
-            )}
+                  <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">
+                    {ticketData.ticket.description}
+                  </p>
+                </div>
 
-            {/* Customer Reply Composer */}
-            <form onSubmit={handleSendReply} className="pt-4 border-t border-slate-700/60 space-y-2">
-              <label className="text-xs font-semibold text-slate-300 block">
-                Reply to the support team:
-              </label>
-              <textarea
-                rows={2}
-                value={replyContent}
-                onChange={(e) => setReplyContent(e.target.value)}
-                placeholder="Type your response here..."
-                className="w-full bg-slate-900 text-sm text-white rounded-xl p-3 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
-                  Replying resumes the SLA timer if your ticket is currently waiting on you.
-                </span>
-                <button
-                  type="submit"
-                  disabled={isSendingReply || !replyContent.trim()}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition-all disabled:opacity-50"
-                >
-                  {isSendingReply ? 'Sending...' : 'Send Reply'}
-                </button>
+                {/* Conversation Messages */}
+                {ticketData.conversation.map((msg: any) => {
+                  const isCustomer = msg.senderRole === 'CUSTOMER';
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`rounded-xl p-4 border shadow-sm ${
+                        isCustomer
+                          ? 'bg-slate-900/90 border-slate-700 mr-6 sm:mr-12'
+                          : 'bg-indigo-950/30 border-indigo-500/40 ml-6 sm:ml-12'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span
+                          className={`text-xs font-semibold ${
+                            isCustomer ? 'text-emerald-400' : 'text-indigo-300'
+                          }`}
+                        >
+                          {msg.senderName} {isCustomer ? '(You)' : '(Support Team)'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {new Date(msg.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
-            </form>
-          </div>
+
+              {/* Reply Box */}
+              {ticketData.ticket.status !== 'CLOSED' ? (
+                <div className="p-4 bg-slate-900 border-t border-slate-700">
+                  <form onSubmit={handleSendReply} className="space-y-3">
+                    <textarea
+                      rows={3}
+                      required
+                      placeholder="Type your response to support engineers..."
+                      value={replyContent}
+                      onChange={(e) => setReplyContent(e.target.value)}
+                      className="w-full bg-slate-900 text-sm text-slate-100 placeholder-slate-400 rounded-xl p-3 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:bg-slate-900 resize-none shadow-inner"
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400">
+                        Replying as: <strong className="text-slate-200">{currentUser.name}</strong>
+                      </span>
+                      <button
+                        type="submit"
+                        disabled={isSendingReply || !replyContent.trim()}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition-all disabled:opacity-50"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>{isSendingReply ? 'Sending...' : 'Send Reply'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                <div className="p-4 bg-slate-900 border-t border-slate-700 text-center text-xs text-slate-400">
+                  This support ticket is closed. If you need assistance with a new problem, please submit a new ticket.
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       )}
     </div>

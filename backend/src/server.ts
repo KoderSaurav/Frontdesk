@@ -2,8 +2,10 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { initDatabase } from './db';
+import authRoutes from './routes/authRoutes';
 import agentRoutes from './routes/agentRoutes';
 import customerRoutes from './routes/customerRoutes';
+import { authenticate } from './middleware/auth';
 import { checkAndAutoCloseInactiveTickets } from './services/ticketService';
 
 dotenv.config();
@@ -13,6 +15,26 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+app.use(authenticate);
+
+// Root redirect for browser visitors to Frontend UI
+app.get('/', (req: Request, res: Response) => {
+  if (req.accepts('html')) {
+    return res.redirect('http://localhost:5173');
+  }
+  res.json({
+    service: 'Frontdesk Support API',
+    company: 'Arvo Systems',
+    status: 'healthy',
+    documentation: {
+      health: '/api/health',
+      agent: '/api/v1/agent/*',
+      customer: '/api/v1/customer/*',
+      auth: '/api/v1/auth/*',
+    },
+    frontend: 'http://localhost:5173',
+  });
+});
 
 // Healthcheck & System Status
 app.get('/api/health', (req: Request, res: Response) => {
@@ -25,6 +47,7 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // Mounted Routes
+app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/agent', agentRoutes);
 app.use('/api/v1/customer', customerRoutes);
 

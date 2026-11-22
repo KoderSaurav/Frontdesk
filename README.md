@@ -49,6 +49,13 @@ Internal team communications are separated from public customer interactions:
 ### 4. Immutable Audit Trail
 All ticket lifecycle events (`CREATED`, `ASSIGNED`, `REPLIED`, `NOTE_ADDED`, `STATUS_CHANGE`, `PRIORITY_CHANGE`, `REOPENED`, `AUTO_CLOSED`) are recorded in an append-only `audit_logs` table with actor identity, action type, old/new state snapshots, and ISO timestamps. Database rules prevent modifications or deletions to audit records.
 
+### 5. Customer Authentication & Role-Based Access Control (RBAC)
+To prevent unauthorized access across customer and agent domains:
+- **Authentication:** Customers register and log in using email and salted `scrypt` password hashing. Authenticated sessions receive signed RFC 7519 HMAC-SHA256 JWT tokens.
+- **Agent Route Protection:** The `requireAgent` middleware blocks customers from calling `/api/v1/agent/*` endpoints with `HTTP 403 Forbidden`.
+- **Insecure Direct Object Reference (IDOR) Prevention:** The `requireCustomerOwnership` middleware verifies that customers can only view, export, or reply to tickets matching their authenticated email. Cross-tenant ticket queries return `HTTP 404 Ticket not found` to prevent ticket enumeration.
+- **Scoped Ticket Listing:** The `/api/v1/customer/my-tickets` endpoint returns only tickets owned by the authenticated customer.
+
 ---
 
 ## Project Structure
@@ -178,6 +185,9 @@ npm run test:incidents
 
 # Run negative testing and edge cases (Category 11)
 npm run test:negative
+
+# Run customer auth & RBAC security tests
+npm run test:auth
 
 # Run comprehensive validation suite (Categories 1 through 10)
 npm run test:validation

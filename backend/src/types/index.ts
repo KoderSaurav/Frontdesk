@@ -7,9 +7,18 @@ export interface User {
   id: number;
   name: string;
   email: string;
+  password_hash?: string;
   role: UserRole;
   title?: string;
   created_at: string;
+}
+
+export interface AuthTokenPayload {
+  userId: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  title?: string;
 }
 
 export interface Holiday {

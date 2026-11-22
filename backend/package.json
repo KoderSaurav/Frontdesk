@@ -12,8 +12,9 @@
     "test:sla": "tsx test/slaEngine.test.ts",
     "test:incidents": "tsx test/concurrencyAndPrivacy.test.ts",
     "test:negative": "tsx test/negativeTesting.test.ts",
+    "test:auth": "tsx test/authAndRbac.test.ts",
     "test:validation": "tsx test/comprehensiveValidation.test.ts",
-    "test": "tsx test/slaEngine.test.ts && tsx test/concurrencyAndPrivacy.test.ts && tsx test/negativeTesting.test.ts && tsx test/comprehensiveValidation.test.ts"
+    "test": "tsx test/slaEngine.test.ts && tsx test/concurrencyAndPrivacy.test.ts && tsx test/negativeTesting.test.ts && tsx test/authAndRbac.test.ts && tsx test/comprehensiveValidation.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

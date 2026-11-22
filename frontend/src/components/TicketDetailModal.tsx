@@ -462,10 +462,10 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                     ? 'Write a public reply to the customer (stops first response SLA timer)...'
                     : 'Write a private note for the support team...'
                 }
-                className={`w-full text-sm text-white rounded-xl p-3 border focus:outline-none focus:ring-2 resize-none placeholder-slate-500 ${
+                className={`w-full text-sm text-slate-100 rounded-xl p-3 border focus:outline-none focus:ring-2 resize-none placeholder-slate-400 ${
                   composerMode === 'internal'
-                    ? 'bg-amber-950/20 border-amber-500/40 focus:ring-amber-500 focus:border-amber-500'
-                    : 'bg-slate-900 border-slate-700 focus:ring-indigo-500 focus:border-indigo-500'
+                    ? 'bg-amber-950/30 border-amber-500/40 focus:ring-amber-500 focus:border-amber-500 focus:bg-amber-950/40'
+                    : 'bg-slate-900 border-slate-700 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-slate-900'
                 }`}
               />
 

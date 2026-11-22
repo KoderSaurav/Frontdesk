@@ -5,18 +5,40 @@ import {
   customerReopenTicket,
   exportTicket,
   getTicketById,
+  listTickets,
 } from '../services/ticketService';
+import { requireCustomer, requireCustomerOwnership } from '../middleware/auth';
 
 const router = Router();
+
+// List tickets submitted by the authenticated customer
+router.get('/my-tickets', requireCustomer, async (req: Request, res: Response) => {
+  try {
+    const customerEmail = req.user!.email;
+    const tickets = await listTickets({ customerEmail });
+    res.json({
+      success: true,
+      data: tickets,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // Customer ticket submission
 router.post('/tickets', async (req: Request, res: Response) => {
   try {
     const { customerName, customerEmail, subject, description, priority, status } = req.body;
 
+    // If customer is authenticated, enforce identity from verified session token
+    const effectiveName = req.user?.role === 'CUSTOMER' ? req.user.name : customerName;
+    const effectiveEmail = req.user?.role === 'CUSTOMER' ? req.user.email : customerEmail;
+    const customerId = req.user?.role === 'CUSTOMER' ? req.user.userId : null;
+
     const ticket = await createTicket({
-      customerName,
-      customerEmail,
+      customerId,
+      customerName: effectiveName,
+      customerEmail: effectiveEmail,
       subject,
       description,
       priority,
@@ -39,8 +61,8 @@ router.post('/tickets', async (req: Request, res: Response) => {
   }
 });
 
-// Customer ticket status view (internal staff notes are strictly excluded)
-router.get('/tickets/:ticketNumber', async (req: Request, res: Response) => {
+// Customer ticket status view (IDOR protected: only owner can view; internal staff notes are strictly excluded)
+router.get('/tickets/:ticketNumber', requireCustomerOwnership, async (req: Request, res: Response) => {
   try {
     const result = await getTicketById(req.params.ticketNumber, false);
     if (!result) {
@@ -82,8 +104,8 @@ router.get('/tickets/:ticketNumber', async (req: Request, res: Response) => {
   }
 });
 
-// Customer export endpoint (MSG-11: internal notes strictly excluded)
-router.get('/tickets/:ticketNumber/export', async (req: Request, res: Response) => {
+// Customer export endpoint (MSG-11: IDOR protected, internal notes strictly excluded)
+router.get('/tickets/:ticketNumber/export', requireCustomerOwnership, async (req: Request, res: Response) => {
   try {
     const exported = await exportTicket(req.params.ticketNumber, false);
     if (!exported) {
@@ -95,8 +117,8 @@ router.get('/tickets/:ticketNumber/export', async (req: Request, res: Response) 
   }
 });
 
-// Customer reply to existing ticket
-router.post('/tickets/:ticketNumber/reply', async (req: Request, res: Response) => {
+// Customer reply to existing ticket (IDOR protected)
+router.post('/tickets/:ticketNumber/reply', requireCustomerOwnership, async (req: Request, res: Response) => {
   try {
     const { content, customerName } = req.body;
     if (!content || !content.trim()) {
@@ -108,10 +130,13 @@ router.post('/tickets/:ticketNumber/reply', async (req: Request, res: Response) 
       return res.status(404).json({ success: false, error: 'Ticket not found.' });
     }
 
+    const effectiveSenderName = req.user?.role === 'CUSTOMER' ? req.user.name : (customerName || result.ticket.customer_name);
+    const effectiveSenderId = req.user?.role === 'CUSTOMER' ? req.user.userId : result.ticket.customer_id;
+
     const message = await addMessage({
       ticketId: result.ticket.id,
-      senderId: result.ticket.customer_id,
-      senderName: customerName || result.ticket.customer_name,
+      senderId: effectiveSenderId,
+      senderName: effectiveSenderName,
       senderRole: 'CUSTOMER',
       isInternal: false,
       content: content.trim(),
@@ -131,8 +156,8 @@ router.post('/tickets/:ticketNumber/reply', async (req: Request, res: Response) 
   }
 });
 
-// Reopen a resolved ticket within allowed window
-router.post('/tickets/:ticketNumber/reopen', async (req: Request, res: Response) => {
+// Reopen a resolved ticket within allowed window (IDOR protected)
+router.post('/tickets/:ticketNumber/reopen', requireCustomerOwnership, async (req: Request, res: Response) => {
   try {
     const { reason } = req.body;
     if (!reason || !reason.trim()) {

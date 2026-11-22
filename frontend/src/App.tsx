@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { api } from './services/api';
+import {
+  api,
+  getStoredCustomerUser,
+  getCustomerToken,
+  clearCustomerSession,
+  getStoredAgentUser,
+  clearAgentSession,
+} from './services/api';
 import { Ticket, User } from './types';
 import { Navbar } from './components/Navbar';
+import { CustomerNavbar } from './components/CustomerNavbar';
+import { LandingPage } from './components/LandingPage';
 import { DashboardMetrics } from './components/DashboardMetrics';
 import { TicketTable } from './components/TicketTable';
 import { TicketDetailModal } from './components/TicketDetailModal';
@@ -10,13 +19,29 @@ import { NewTicketModal } from './components/NewTicketModal';
 import { AlertCircle, CheckCircle2, PlayCircle, ShieldCheck } from 'lucide-react';
 
 export const App: React.FC = () => {
+  // Stored Sessions Check
+  const storedCustomer = getStoredCustomerUser();
+  const storedAgent = getStoredAgentUser();
+
+  // Root View Mode: 'landing' | 'customer' | 'agent'
+  const [authMode, setAuthMode] = useState<'landing' | 'customer' | 'agent'>(() => {
+    if (storedCustomer && getCustomerToken()) return 'customer';
+    if (storedAgent) return 'agent';
+    return 'landing';
+  });
+
+  // Customer State
+  const [currentCustomer, setCurrentCustomer] = useState<any | null>(storedCustomer);
+
+  // Agent State
   const [agents, setAgents] = useState<User[]>([]);
-  const [currentAgent, setCurrentAgent] = useState<User | null>(null);
+  const [currentAgent, setCurrentAgent] = useState<User | null>(storedAgent || null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [activeView, setActiveView] = useState<'agent' | 'customer'>('agent');
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+
+  // Modals & UI State
   const [isNewTicketOpen, setIsNewTicketOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -25,15 +50,15 @@ export const App: React.FC = () => {
   const fetchAgentsAndTickets = async () => {
     setIsLoading(true);
     try {
-      const agentList = await api.getAgents();
+      const agentList = (await api.getAgents()) || [];
       setAgents(agentList);
 
-      const agentToUse = currentAgent || agentList[0] || null;
+      const agentToUse = currentAgent || (agentList.length > 0 ? agentList[0] : null);
       if (!currentAgent && agentList.length > 0) {
         setCurrentAgent(agentList[0]);
       }
 
-      if (agentToUse) {
+      if (agentToUse && authMode === 'agent') {
         await loadTickets(agentToUse.id);
       }
     } catch (err: any) {
@@ -55,13 +80,16 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     fetchAgentsAndTickets();
-    // Auto refresh every 30s to keep SLA countdowns fresh
+    // Auto refresh every 30s to keep SLA countdowns fresh when in agent mode
     const interval = setInterval(() => {
-      if (currentAgent) loadTickets(currentAgent.id);
+      if (authMode === 'agent' && currentAgent) {
+        loadTickets(currentAgent.id);
+      }
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [authMode, currentAgent?.id]);
 
+  // Handle Switching Agents in Agent Mode (Preserved as it was)
   const handleSelectAgent = (agent: User) => {
     setCurrentAgent(agent);
     loadTickets(agent.id);
@@ -72,6 +100,7 @@ export const App: React.FC = () => {
     setTimeout(() => setNotification(null), 3500);
   };
 
+  // Quick Assign for Agents
   const handleQuickAssign = async (ticketId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!currentAgent) return;
@@ -84,7 +113,6 @@ export const App: React.FC = () => {
       });
       loadTickets(currentAgent.id);
     } catch (err: any) {
-      // INC-0291 Concurrency Conflict Caught
       setNotification({
         type: 'error',
         message: err.message || 'Ticket assignment conflict. Another agent has already taken this ticket.',
@@ -105,9 +133,51 @@ export const App: React.FC = () => {
     setTimeout(() => setNotification(null), 4500);
   };
 
-  // Filter & Search Tickets
+  // Auth Mode Transitions
+  const handleCustomerLoginSuccess = (user: any) => {
+    setCurrentCustomer(user);
+    setAuthMode('customer');
+    setNotification({
+      type: 'success',
+      message: `Welcome, ${user.name}! Showing your reported problems.`,
+    });
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  const handleAgentLoginSuccess = (agent: User) => {
+    setCurrentAgent(agent);
+    setAuthMode('agent');
+    loadTickets(agent.id);
+    setNotification({
+      type: 'success',
+      message: `Signed in to workspace as ${agent.name} (${agent.title || 'Support'}).`,
+    });
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  const handleCustomerLogout = () => {
+    clearCustomerSession();
+    setCurrentCustomer(null);
+    setAuthMode('landing');
+    setNotification({
+      type: 'success',
+      message: 'Signed out of Customer Portal.',
+    });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleAgentLogout = () => {
+    clearAgentSession();
+    setAuthMode('landing');
+    setNotification({
+      type: 'success',
+      message: 'Exited Agent Workspace.',
+    });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  // Filter & Search Tickets (Agent Mode)
   const filteredTickets = tickets.filter((t) => {
-    // Active Metric Filter
     if (activeFilter === 'MINE' && currentAgent && t.assigned_to !== currentAgent.id) {
       return false;
     }
@@ -122,7 +192,6 @@ export const App: React.FC = () => {
       return false;
     }
 
-    // Search Query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const match =
@@ -137,19 +206,28 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
-      {/* Top Navbar with 1-Click Agent Switcher */}
-      <Navbar
-        agents={agents}
-        currentAgent={currentAgent}
-        onSelectAgent={handleSelectAgent}
-        activeView={activeView}
-        onChangeView={setActiveView}
-        onOpenNewTicket={() => setIsNewTicketOpen(true)}
-        onRefresh={() => {
-          if (currentAgent) loadTickets(currentAgent.id);
-        }}
-        isLoading={isLoading}
-      />
+      {/* Top Navbar Based on Mode */}
+      {authMode === 'customer' && currentCustomer && (
+        <CustomerNavbar
+          currentUser={currentCustomer}
+          onOpenNewTicket={() => setIsNewTicketOpen(true)}
+          onLogout={handleCustomerLogout}
+        />
+      )}
+
+      {authMode === 'agent' && (
+        <Navbar
+          agents={agents}
+          currentAgent={currentAgent}
+          onSelectAgent={handleSelectAgent}
+          onOpenNewTicket={() => setIsNewTicketOpen(true)}
+          onRefresh={() => {
+            if (currentAgent) loadTickets(currentAgent.id);
+          }}
+          onLogout={handleAgentLogout}
+          isLoading={isLoading}
+        />
+      )}
 
       {/* Global Notification Toast */}
       {notification && (
@@ -169,58 +247,65 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Main Workspace */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeView === 'customer' ? (
-          /* Customer Portal Sandbox View (Demonstrating Note Isolation) */
+      {/* Main Workspace by Mode */}
+      {authMode === 'landing' ? (
+        /* HOME / LANDING PAGE: 2 Types of Login + Customer-Only Registration */
+        <LandingPage
+          agents={agents}
+          onCustomerLoginSuccess={handleCustomerLoginSuccess}
+          onAgentLoginSuccess={handleAgentLoginSuccess}
+        />
+      ) : authMode === 'customer' && currentCustomer ? (
+        /* CUSTOMER SECTION: Only reported problems of this same user displayed */
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <CustomerPortal
-            onBackToAgent={() => setActiveView('agent')}
+            currentUser={currentCustomer}
             onOpenNewTicket={() => setIsNewTicketOpen(true)}
           />
-        ) : (
-          /* Agent Workspace (Single-Screen Command Center) */
-          <>
-            {/* Top Metric Cards Bar */}
-            <DashboardMetrics
-              tickets={tickets}
-              currentAgent={currentAgent}
-              activeFilter={activeFilter}
-              onSelectFilter={setActiveFilter}
-            />
+        </main>
+      ) : (
+        /* AGENT SECTION: 9-Agent Switcher Preserved */
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Top Metric Cards Bar */}
+          <DashboardMetrics
+            tickets={tickets}
+            currentAgent={currentAgent}
+            activeFilter={activeFilter}
+            onSelectFilter={setActiveFilter}
+          />
 
-            <div className="bg-slate-800/40 border border-slate-700/60 rounded-xl px-4 py-2.5 mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                <span>
-                  Support queue active. Operating schedule: <strong>Mon–Fri, 9:30 AM – 6:30 PM</strong>.
-                </span>
-              </div>
-              <button
-                onClick={handleRunAutoCloseCheck}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-650 text-slate-200 font-medium transition-colors"
-                title="Evaluate inactive tickets and run automated status transitions"
-              >
-                <PlayCircle className="w-3.5 h-3.5 text-slate-300" />
-                <span>Run Inactivity Check</span>
-              </button>
+          <div className="bg-slate-800/40 border border-slate-700/60 rounded-xl px-4 py-2.5 mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              <span>
+                Support queue active. Operating schedule: <strong>Mon–Fri, 9:30 AM – 6:30 PM</strong>.
+              </span>
             </div>
+            <button
+              onClick={handleRunAutoCloseCheck}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-650 text-slate-200 font-medium transition-colors"
+              title="Evaluate inactive tickets and run automated status transitions"
+            >
+              <PlayCircle className="w-3.5 h-3.5 text-slate-300" />
+              <span>Run Inactivity Check</span>
+            </button>
+          </div>
 
-            {/* Main Ticket Queue Table */}
-            <TicketTable
-              tickets={filteredTickets}
-              currentAgent={currentAgent}
-              onOpenTicket={(ticket) => setSelectedTicket(ticket)}
-              onQuickAssign={handleQuickAssign}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              activeFilter={activeFilter}
-              onFilterChange={setActiveFilter}
-            />
-          </>
-        )}
-      </main>
+          {/* Main Ticket Queue Table */}
+          <TicketTable
+            tickets={filteredTickets}
+            currentAgent={currentAgent}
+            onOpenTicket={(ticket) => setSelectedTicket(ticket)}
+            onQuickAssign={handleQuickAssign}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            activeFilter={activeFilter}
+            onFilterChange={setActiveFilter}
+          />
+        </main>
+      )}
 
-      {/* Ticket Details & Conversation Modal */}
+      {/* Ticket Details & Conversation Modal (Agent Workspace) */}
       {selectedTicket && (
         <TicketDetailModal
           ticket={selectedTicket}
@@ -237,7 +322,9 @@ export const App: React.FC = () => {
         <NewTicketModal
           onClose={() => setIsNewTicketOpen(false)}
           onTicketCreated={() => {
-            if (currentAgent) loadTickets(currentAgent.id);
+            if (authMode === 'agent' && currentAgent) {
+              loadTickets(currentAgent.id);
+            }
             setNotification({
               type: 'success',
               message: 'New support ticket created and SLA timers initialized!',

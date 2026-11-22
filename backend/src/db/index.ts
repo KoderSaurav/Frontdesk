@@ -56,20 +56,23 @@ export function getPool(): Pool | null {
 }
 
 export function seedInMemoryStore() {
+  const defaultHash =
+    'frontdesk2026salt:4e65a2dba3b44ce4241d941da4abef66f6d727043509f0261a8ed9d0c55bf3e4fb46eaa9ebbdb776509406abca3604ba63df4b8ef92495b0c537f385a0809b76';
+
   inMemoryStore.users = [
-    { id: 1, name: 'Meera', email: 'meera@arvo.com', role: 'AGENT', title: 'Support Lead', created_at: new Date().toISOString() },
-    { id: 2, name: 'Rahul', email: 'rahul@arvo.com', role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
-    { id: 3, name: 'Sneha', email: 'sneha@arvo.com', role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
-    { id: 4, name: 'Arjun', email: 'arjun@arvo.com', role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
-    { id: 5, name: 'Priya', email: 'priya@arvo.com', role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
-    { id: 6, name: 'Anjali', email: 'anjali@arvo.com', role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
-    { id: 7, name: 'Kiran', email: 'kiran@arvo.com', role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
-    { id: 8, name: 'Neha', email: 'neha@arvo.com', role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
-    { id: 9, name: 'Vikram', email: 'vikram@arvo.com', role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
+    { id: 1, name: 'Meera', email: 'meera@arvo.com', password_hash: defaultHash, role: 'AGENT', title: 'Support Lead', created_at: new Date().toISOString() },
+    { id: 2, name: 'Rahul', email: 'rahul@arvo.com', password_hash: defaultHash, role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
+    { id: 3, name: 'Sneha', email: 'sneha@arvo.com', password_hash: defaultHash, role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
+    { id: 4, name: 'Arjun', email: 'arjun@arvo.com', password_hash: defaultHash, role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
+    { id: 5, name: 'Priya', email: 'priya@arvo.com', password_hash: defaultHash, role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
+    { id: 6, name: 'Anjali', email: 'anjali@arvo.com', password_hash: defaultHash, role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
+    { id: 7, name: 'Kiran', email: 'kiran@arvo.com', password_hash: defaultHash, role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
+    { id: 8, name: 'Neha', email: 'neha@arvo.com', password_hash: defaultHash, role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
+    { id: 9, name: 'Vikram', email: 'vikram@arvo.com', password_hash: defaultHash, role: 'AGENT', title: 'Support Agent', created_at: new Date().toISOString() },
     
-    { id: 101, name: 'Alex Rivera', email: 'alex@techcorp.io', role: 'CUSTOMER', title: 'CTO at TechCorp', created_at: new Date().toISOString() },
-    { id: 102, name: 'Sara Chen', email: 'sara@cloudflow.com', role: 'CUSTOMER', title: 'Ops Lead at CloudFlow', created_at: new Date().toISOString() },
-    { id: 103, name: 'David Kim', email: 'david@finpay.net', role: 'CUSTOMER', title: 'DevOps Manager at FinPay', created_at: new Date().toISOString() },
+    { id: 101, name: 'Alex Rivera', email: 'alex@techcorp.io', password_hash: defaultHash, role: 'CUSTOMER', title: 'CTO at TechCorp', created_at: new Date().toISOString() },
+    { id: 102, name: 'Sara Chen', email: 'sara@cloudflow.com', password_hash: defaultHash, role: 'CUSTOMER', title: 'Ops Lead at CloudFlow', created_at: new Date().toISOString() },
+    { id: 103, name: 'David Kim', email: 'david@finpay.net', password_hash: defaultHash, role: 'CUSTOMER', title: 'DevOps Manager at FinPay', created_at: new Date().toISOString() },
   ];
 
   inMemoryStore.holidays = [
