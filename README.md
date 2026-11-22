@@ -2,6 +2,8 @@
 
 A customer support management application designed for tracking issues, calculating business-hour SLAs, handling concurrent ticket assignments, and maintaining tamper-proof audit histories.
 
+> **Evaluation & Testing Guide:** See [COMPLETION_NOTE.md](COMPLETION_NOTE.md) for deferred items rationale and 1-click demo login credentials for both Customer and Support Agent portals.
+
 ---
 
 ## Architecture Overview
